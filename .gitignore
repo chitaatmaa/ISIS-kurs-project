@@ -1,0 +1,5 @@
+*.xlsx
+.idea/
+*.xls
+.DS_Store
+__pycache__/
