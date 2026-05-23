@@ -6,9 +6,6 @@ from scipy.stats import shapiro, skew, norm
 
 
 def analyze_file(path: str):
-    # =========================
-    # 1. Чтение Excel
-    # =========================
     df = pd.read_excel(path)
 
     required_columns = ["id", "nominal", "fact"]
@@ -17,16 +14,12 @@ def analyze_file(path: str):
         if col not in df.columns:
             raise Exception(f"Нет колонки {col}")
 
-    # =========================
-    # 2. Считаем отклонения
-    # =========================
+    # Считаем отклонения
     df["error"] = df["fact"] - df["nominal"]
 
     errors = df["error"].to_numpy()
 
-    # =========================
-    # 3. Базовая статистика
-    # =========================
+    # Базовая статистика
     n = len(errors)
 
     mean_error = np.mean(errors)
@@ -37,14 +30,10 @@ def analyze_file(path: str):
 
     asymmetry = skew(errors)
 
-    # =========================
-    # 4. Shapiro-Wilk
-    # =========================
+    # Shapiro-Wilk
     stat, p_value = shapiro(errors)
 
-    # =========================
-    # 5. Вывод в консоль
-    # =========================
+    # Вывод в консоль
     print("\n======= РЕЗУЛЬТАТ =======")
     print(f"Количество строк: {n}")
     print(f"Объем выборки: {n}")
@@ -61,9 +50,7 @@ def analyze_file(path: str):
     else:
         print("Гипотеза отвергается: распределение НЕ нормальное")
 
-    # =========================
-    # 6. График
-    # =========================
+    # График
     plt.figure(figsize=(10, 6))
 
     # эмпирическая гистограмма
