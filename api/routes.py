@@ -19,51 +19,20 @@ router = APIRouter()
     "/api/v1/analyze",
     response_model=AnalyzeResponse
 )
-async def analyze(
-    file: UploadFile = File(...)
-):
+async def analyze(file: UploadFile = File(...)):
     if not file.filename.endswith(".xlsx"):
-        raise HTTPException(
-            status_code=400,
-            detail="Only .xlsx files are supported"
-        )
+        raise HTTPException(status_code=400, detail="Только .xlsx файлы поддерживаются")
 
     try:
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".xlsx"
-        ) as temp_file:
-            contents = await file.read()
-            temp_file.write(contents)
-            temp_path = temp_file.name
+        contents = await file.read()
+        measurements = ExcelLoader.load_measurements_from_bytes(contents)
 
-        measurements = ExcelLoader.load_measurements(temp_path)
+        errors = StatisticsService.calculate_errors(measurements)
+        statistics = StatisticsService.calculate_statistics(errors)
+        normality = NormalityService.check_normality(errors)
 
-        errors = StatisticsService.calculate_errors(
-            measurements
-        )
-
-        statistics = StatisticsService.calculate_statistics(
-            errors
-        )
-
-        normality = NormalityService.check_normality(
-            errors
-        )
-
-        result = {
-            **statistics,
-            **normality
-        }
-
+        result = {**statistics, **normality}
         return AnalyzeResponse(**result)
 
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
-
-    finally:
-        if 'temp_path' in locals() and os.path.exists(temp_path):
-            os.remove(temp_path)
+        raise HTTPException(status_code=500, detail=str(e))

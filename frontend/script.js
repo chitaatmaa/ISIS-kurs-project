@@ -33,6 +33,30 @@ function renderPlot(errors, meanVal, sigmaVal) {
         return;
     }
 
+    if (sigmaVal === 0 || Math.max(...errors) === Math.min(...errors)) {
+        const traceHist = {
+            x: errors,
+            type: 'histogram',
+            histnorm: 'probability density',
+            name: 'Эмпирическое распределение',
+            marker: { color: '#5a9cce', opacity: 0.7 },
+            nbinsx: 10
+        };
+        const layout = {
+            title: 'Распределение ошибок (вырожденные данные)',
+            xaxis: { title: 'Отклонение (граммы)' },
+            yaxis: { title: 'Плотность вероятности' },
+            annotations: [{
+                text: 'Все значения одинаковы, нормальное распределение не определено',
+                xref: 'paper', yref: 'paper',
+                x: 0.5, y: 0.9, showarrow: false,
+                font: { size: 12, color: '#d9534f' }
+            }]
+        };
+        Plotly.newPlot('graphDiv', [traceHist], layout, { responsive: true });
+        return;
+    }
+
     const traceHist = {
         x: errors,
         type: 'histogram',
@@ -46,7 +70,9 @@ function renderPlot(errors, meanVal, sigmaVal) {
     const xMax = Math.max(...errors);
     const step = (xMax - xMin) / 300;
     const xVals = [];
-    for (let x = xMin; x <= xMax; x += step) xVals.push(x);
+    for (let x = xMin; x <= xMax; x += step) {
+        xVals.push(x);
+    }
     const yVals = xVals.map(x => {
         const exponent = -Math.pow(x - meanVal, 2) / (2 * sigmaVal * sigmaVal);
         return (1 / (sigmaVal * Math.sqrt(2 * Math.PI))) * Math.exp(exponent);
@@ -107,7 +133,9 @@ async function runAnalysis() {
         statMeanAbs.innerText = data.mean_abs.toFixed(4);
         statVar.innerText = data.variance.toFixed(4);
         statSigma.innerText = data.sigma.toFixed(4);
-        statSkew.innerText = data.skewness.toFixed(4);
+        let skewVal = data.skewness;
+        if (skewVal === null || isNaN(skewVal)) skewVal = 0;
+        statSkew.innerText = skewVal.toFixed(4);
         statW.innerText = data.shapiro_w;
         statP.innerText = data.shapiro_p;
 
@@ -137,14 +165,17 @@ async function runAnalysis() {
 function parseExcelAndShowInfo(dataBuffer, fileName) {
     try {
         const workbook = XLSX.read(dataBuffer, { type: 'array' });
+        if (!workbook.SheetNames.length) throw new Error("Файл не содержит листов");
         const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
         const rows = XLSX.utils.sheet_to_json(firstSheet);
-        if (!rows || rows.length === 0) throw new Error("Файл пуст или не содержит данных");
+        if (!rows || rows.length === 0) throw new Error("Лист не содержит данных");
 
         const firstRow = rows[0];
         const colNames = Object.keys(firstRow).map(k => k.toLowerCase());
-        if (!colNames.includes('id') || !colNames.includes('nominal') || !colNames.includes('fact')) {
-            throw new Error("Не найдены колонки 'id', 'nominal', 'fact'. Проверьте заголовки.");
+        const required = ['id', 'nominal', 'fact'];
+        const missing = required.filter(c => !colNames.includes(c));
+        if (missing.length) {
+            throw new Error(`Отсутствуют колонки: ${missing.join(', ')}. Требуются: id, nominal, fact`);
         }
 
         fileInfo.innerHTML = `Файл: ${fileName} | Записей: ${rows.length}`;
@@ -154,28 +185,37 @@ function parseExcelAndShowInfo(dataBuffer, fileName) {
         alert("Ошибка при чтении Excel: " + err.message);
         fileInfo.innerHTML = 'Данные отсутствуют (некорректный файл)';
         analyzeBtn.disabled = true;
+        throw err;
     }
 }
 
 function handleFile(file) {
     if (!file) return;
 
-    const allowed = [
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel'
-    ];
-    if (!allowed.includes(file.type) && !file.name.match(/\.(xlsx|xls)$/i)) {
+    const fileName = file.name;
+    const isExcel = /\.(xlsx|xls)$/i.test(fileName);
+    if (!isExcel) {
         alert("Пожалуйста, загрузите файл Excel (.xlsx или .xls)");
         return;
     }
 
     currentFile = file;
-    currentFileName = file.name;
+    currentFileName = fileName;
 
     const reader = new FileReader();
     reader.onload = function (e) {
-        const data = new Uint8Array(e.target.result);
-        parseExcelAndShowInfo(data, file.name);
+        try {
+            parseExcelAndShowInfo(new Uint8Array(e.target.result), fileName);
+        } catch (err) {
+            console.error(err);
+            fileInfo.innerHTML = 'Ошибка: неверный формат или структура файла';
+            analyzeBtn.disabled = true;
+        }
+    };
+    reader.onerror = function () {
+        alert("Не удалось прочитать файл");
+        fileInfo.innerHTML = 'Ошибка чтения файла';
+        analyzeBtn.disabled = true;
     };
     reader.readAsArrayBuffer(file);
 }
@@ -189,7 +229,8 @@ dropZone.addEventListener('click', () => {
     excelInput.click();
 });
 
-loadFileBtn.addEventListener('click', () => {
+loadFileBtn.addEventListener('click', (event) => {
+    event.stopPropagation();
     resetFileInput();
     excelInput.click();
 });
